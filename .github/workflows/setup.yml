@@ -1,9 +1,9 @@
-name: 🚀 One-Click Setup (Run Once)
+name: 🛠️ Semi-Auto Setup (Console Output)
 
-# 允许手动点击按钮触发
+# 允许手动触发
 on: workflow_dispatch
 
-# 赋予脚本修改仓库代码的权限
+# 赋予修改普通文件的权限
 permissions:
   contents: write
 
@@ -14,22 +14,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run Auto-Configuration Script
+      - name: Auto-Modify Files & Generate Config
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const path = require('path');
             
-            // 1. 获取当前仓库名称 (用于设置 base path)
+            // 获取仓库名
             const repoName = context.repo.repo;
             console.log(`🔧 Configuring for repository: ${repoName}`);
 
-            // 2. 修正 index.html
-            // 去掉 importmap 并注入 react 入口
+            // --- 任务 1: 修正 index.html ---
             if (fs.existsSync('index.html')) {
               let html = fs.readFileSync('index.html', 'utf8');
-              const originalLength = html.length;
               
               // 移除 importmap
               html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
@@ -40,13 +37,10 @@ jobs:
               }
               
               fs.writeFileSync('index.html', html);
-              console.log('✅ index.html updated');
-            } else {
-              console.log('⚠️ index.html not found, skipping');
+              console.log('✅ index.html has been updated locally.');
             }
 
-            // 3. 重写 vite.config.ts
-            // 注入正确的 base 路径和配置
+            // --- 任务 2: 重写 vite.config.ts ---
             const newViteConfig = `
             import { defineConfig } from 'vite';
             import react from '@vitejs/plugin-react';
@@ -66,10 +60,10 @@ jobs:
             });
             `;
             fs.writeFileSync('vite.config.ts', newViteConfig.trim());
-            console.log('✅ vite.config.ts configured');
+            console.log('✅ vite.config.ts has been updated locally.');
 
-            // 4. 创建自动部署流程文件 (deploy.yml)
-            const deployWorkflow = `name: Deploy to GitHub Pages
+            // --- 任务 3: 生成 deploy.yml 内容并输出到控制台 ---
+            const deployYamlContent = `name: Deploy to GitHub Pages
 
             on:
               push:
@@ -102,18 +96,21 @@ jobs:
                 runs-on: ubuntu-latest
                 steps:
                   - id: deployment
-                    uses: actions/deploy-pages@v4
-            `;
-            
-            const workflowDir = '.github/workflows';
-            if (!fs.existsSync(workflowDir)) fs.mkdirSync(workflowDir, { recursive: true });
-            fs.writeFileSync(path.join(workflowDir, 'deploy.yml'), deployWorkflow);
-            console.log('✅ deploy.yml created');
+                    uses: actions/deploy-pages@v4`;
 
-      - name: Commit and Push Changes
+            // 打印显眼的日志供复制
+            console.log("\\n\\n" + "=".repeat(60));
+            console.log("📋 【请复制下方内容】 📋");
+            console.log("👇👇👇👇👇👇👇👇👇👇👇");
+            console.log(deployYamlContent);
+            console.log("👆👆👆👆👆👆👆👆👆👆👆");
+            console.log("=".repeat(60) + "\\n\\n");
+
+      - name: Commit Modified Files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html vite.config.ts .github/workflows/deploy.yml
-          git commit -m "Auto-configure project for GitHub Pages" || echo "No changes to commit"
+          # 只提交 index.html 和 vite.config.ts，这不会触发安全报错
+          git add index.html vite.config.ts
+          git commit -m "Auto-configure project files (index & vite)" || echo "No changes to commit"
           git push
