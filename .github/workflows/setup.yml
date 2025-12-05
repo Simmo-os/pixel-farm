@@ -1,4 +1,4 @@
-name: 🛠️ Semi-Auto Setup (Final Fix)
+name: 🛠️ Setup (Final Robust Ver)
 
 on: workflow_dispatch
 
@@ -20,7 +20,7 @@ jobs:
             const repoName = context.repo.repo;
             console.log(`🔧 Configuring for repository: ${repoName}`);
 
-            // 1. 修正 index.html
+            // --- 1. 修正 index.html ---
             if (fs.existsSync('index.html')) {
               let html = fs.readFileSync('index.html', 'utf8');
               html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
@@ -31,66 +31,77 @@ jobs:
               console.log('✅ index.html updated.');
             }
 
-            // 2. 重写 vite.config.ts
-            const newViteConfig = `import { defineConfig } from 'vite';
-            import react from '@vitejs/plugin-react';
-            import path from 'path';
+            // --- 2. 重写 vite.config.ts (修复 ESM __dirname 问题) ---
+            // 我们显式添加 import.meta.url 处理，确保 build 不会报错
+            const viteConfigLines = [
+              "import { defineConfig } from 'vite';",
+              "import react from '@vitejs/plugin-react';",
+              "import path from 'path';",
+              "import { fileURLToPath } from 'url';",
+              "",
+              "const __filename = fileURLToPath(import.meta.url);",
+              "const __dirname = path.dirname(__filename);",
+              "",
+              "export default defineConfig({",
+              `  base: '/${repoName}/',`,
+              "  plugins: [react()],",
+              "  resolve: {",
+              "    alias: {",
+              "      '@': path.resolve(__dirname, '.'),",
+              "    }",
+              "  },",
+              "  server: {",
+              "    host: '0.0.0.0',",
+              "  }",
+              "});"
+            ];
+            fs.writeFileSync('vite.config.ts', viteConfigLines.join('\n'));
+            console.log('✅ vite.config.ts updated (ESM compatible).');
 
-            export default defineConfig({
-              base: '/${repoName}/',
-              plugins: [react()],
-              resolve: {
-                alias: {
-                  '@': path.resolve(__dirname, '.'),
-                }
-              },
-              server: {
-                host: '0.0.0.0',
-              }
-            });`;
-            fs.writeFileSync('vite.config.ts', newViteConfig);
-            console.log('✅ vite.config.ts updated.');
-
-            // 3. 生成 Deploy 内容 (调整了顺序，更稳健)
-            const deployYamlContent = `name: Deploy to GitHub Pages
-
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4`;
+            // --- 3. 生成 Deploy.yml 内容 (使用数组拼接，杜绝缩进错误) ---
+            const deployLines = [
+              "name: Deploy to GitHub Pages",
+              "",
+              "on:",
+              "  push:",
+              "    branches: [ main, master ]",
+              "  workflow_dispatch:",
+              "",
+              "permissions:",
+              "  contents: read",
+              "  pages: write",
+              "  id-token: write",
+              "",
+              "jobs:",
+              "  build:",
+              "    runs-on: ubuntu-latest",
+              "    steps:",
+              "      - uses: actions/checkout@v4",
+              "      - uses: actions/setup-node@v4",
+              "        with:",
+              "          node-version: 20",
+              "      - run: npm install",
+              "      - run: npm run build",
+              "      - uses: actions/upload-pages-artifact@v3",
+              "        with:",
+              "          path: ./dist",
+              "",
+              "  deploy:",
+              "    needs: build",
+              "    runs-on: ubuntu-latest",
+              "    environment:",
+              "      name: github-pages",
+              "      url: ${{ steps.deployment.outputs.page_url }}",
+              "    steps:",
+              "      - id: deployment",
+              "        uses: actions/deploy-pages@v4"
+            ];
+            
+            const deployYamlContent = deployLines.join('\n');
 
             // 打印日志
             console.log("\\n\\n" + "=".repeat(60));
-            console.log("📋 【通用配置 - 请完整复制下方内容】 📋");
+            console.log("📋 【请完整复制下方内容 (Copy Below)】 📋");
             console.log("👇👇👇👇👇👇👇👇👇👇👇");
             console.log(deployYamlContent);
             console.log("👆👆👆👆👆👆👆👆👆👆👆");
