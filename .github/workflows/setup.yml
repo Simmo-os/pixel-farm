@@ -1,9 +1,7 @@
-name: 🛠️ Semi-Auto Setup (Console Output)
+name: 🛠️ Semi-Auto Setup (Fix Indent)
 
-# 允许手动触发
 on: workflow_dispatch
 
-# 赋予修改普通文件的权限
 permissions:
   contents: write
 
@@ -20,29 +18,24 @@ jobs:
           script: |
             const fs = require('fs');
             
-            // 获取仓库名
+            // 1. 获取仓库名
             const repoName = context.repo.repo;
             console.log(`🔧 Configuring for repository: ${repoName}`);
 
-            // --- 任务 1: 修正 index.html ---
+            // 2. 修正 index.html
             if (fs.existsSync('index.html')) {
               let html = fs.readFileSync('index.html', 'utf8');
-              
-              // 移除 importmap
               html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
-              
-              // 注入入口脚本
               if (!html.includes('src="/index.tsx"')) {
                 html = html.replace('</body>', '    <script type="module" src="/index.tsx"></script>\n  </body>');
               }
-              
               fs.writeFileSync('index.html', html);
-              console.log('✅ index.html has been updated locally.');
+              console.log('✅ index.html updated.');
             }
 
-            // --- 任务 2: 重写 vite.config.ts ---
-            const newViteConfig = `
-            import { defineConfig } from 'vite';
+            // 3. 重写 vite.config.ts
+            // 确保 base 路径正确
+            const newViteConfig = `import { defineConfig } from 'vite';
             import react from '@vitejs/plugin-react';
             import path from 'path';
 
@@ -57,50 +50,50 @@ jobs:
               server: {
                 host: '0.0.0.0',
               }
-            });
-            `;
-            fs.writeFileSync('vite.config.ts', newViteConfig.trim());
-            console.log('✅ vite.config.ts has been updated locally.');
+            });`;
+            fs.writeFileSync('vite.config.ts', newViteConfig);
+            console.log('✅ vite.config.ts updated.');
 
-            // --- 任务 3: 生成 deploy.yml 内容并输出到控制台 ---
+            // 4. 生成 Deploy 内容 (关键修改：移除所有缩进，确保顶格)
             const deployYamlContent = `name: Deploy to GitHub Pages
 
-            on:
-              push:
-                branches: [ main, master ]
-              workflow_dispatch:
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-            permissions:
-              contents: read
-              pages: write
-              id-token: write
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
-            jobs:
-              build:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: actions/checkout@v4
-                  - uses: actions/setup-node@v4
-                    with:
-                      node-version: 20
-                  - run: npm install
-                  - run: npm run build
-                  - uses: actions/upload-pages-artifact@v3
-                    with:
-                      path: ./dist
-              deploy:
-                environment:
-                  name: github-pages
-                  url: \${{ steps.deployment.outputs.page_url }}
-                needs: build
-                runs-on: ubuntu-latest
-                steps:
-                  - id: deployment
-                    uses: actions/deploy-pages@v4`;
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
 
-            // 打印显眼的日志供复制
+  deploy:
+    environment:
+      name: github-pages
+      url: \${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4`;
+
+            // 打印日志
             console.log("\\n\\n" + "=".repeat(60));
-            console.log("📋 【请复制下方内容】 📋");
+            console.log("📋 【通用配置 - 请完整复制下方内容】 📋");
             console.log("👇👇👇👇👇👇👇👇👇👇👇");
             console.log(deployYamlContent);
             console.log("👆👆👆👆👆👆👆👆👆👆👆");
@@ -110,7 +103,6 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 只提交 index.html 和 vite.config.ts，这不会触发安全报错
           git add index.html vite.config.ts
-          git commit -m "Auto-configure project files (index & vite)" || echo "No changes to commit"
+          git commit -m "Auto-configure project files" || echo "No changes to commit"
           git push
