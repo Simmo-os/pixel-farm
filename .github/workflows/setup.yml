@@ -1,0 +1,119 @@
+name: 🚀 One-Click Setup (Run Once)
+
+# 允许手动点击按钮触发
+on: workflow_dispatch
+
+# 赋予脚本修改仓库代码的权限
+permissions:
+  contents: write
+
+jobs:
+  configure-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Auto-Configuration Script
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // 1. 获取当前仓库名称 (用于设置 base path)
+            const repoName = context.repo.repo;
+            console.log(`🔧 Configuring for repository: ${repoName}`);
+
+            // 2. 修正 index.html
+            // 去掉 importmap 并注入 react 入口
+            if (fs.existsSync('index.html')) {
+              let html = fs.readFileSync('index.html', 'utf8');
+              const originalLength = html.length;
+              
+              // 移除 importmap
+              html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
+              
+              // 注入入口脚本
+              if (!html.includes('src="/index.tsx"')) {
+                html = html.replace('</body>', '    <script type="module" src="/index.tsx"></script>\n  </body>');
+              }
+              
+              fs.writeFileSync('index.html', html);
+              console.log('✅ index.html updated');
+            } else {
+              console.log('⚠️ index.html not found, skipping');
+            }
+
+            // 3. 重写 vite.config.ts
+            // 注入正确的 base 路径和配置
+            const newViteConfig = `
+            import { defineConfig } from 'vite';
+            import react from '@vitejs/plugin-react';
+            import path from 'path';
+
+            export default defineConfig({
+              base: '/${repoName}/',
+              plugins: [react()],
+              resolve: {
+                alias: {
+                  '@': path.resolve(__dirname, '.'),
+                }
+              },
+              server: {
+                host: '0.0.0.0',
+              }
+            });
+            `;
+            fs.writeFileSync('vite.config.ts', newViteConfig.trim());
+            console.log('✅ vite.config.ts configured');
+
+            // 4. 创建自动部署流程文件 (deploy.yml)
+            const deployWorkflow = `name: Deploy to GitHub Pages
+
+            on:
+              push:
+                branches: [ main, master ]
+              workflow_dispatch:
+
+            permissions:
+              contents: read
+              pages: write
+              id-token: write
+
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: actions/setup-node@v4
+                    with:
+                      node-version: 20
+                  - run: npm install
+                  - run: npm run build
+                  - uses: actions/upload-pages-artifact@v3
+                    with:
+                      path: ./dist
+              deploy:
+                environment:
+                  name: github-pages
+                  url: \${{ steps.deployment.outputs.page_url }}
+                needs: build
+                runs-on: ubuntu-latest
+                steps:
+                  - id: deployment
+                    uses: actions/deploy-pages@v4
+            `;
+            
+            const workflowDir = '.github/workflows';
+            if (!fs.existsSync(workflowDir)) fs.mkdirSync(workflowDir, { recursive: true });
+            fs.writeFileSync(path.join(workflowDir, 'deploy.yml'), deployWorkflow);
+            console.log('✅ deploy.yml created');
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html vite.config.ts .github/workflows/deploy.yml
+          git commit -m "Auto-configure project for GitHub Pages" || echo "No changes to commit"
+          git push
