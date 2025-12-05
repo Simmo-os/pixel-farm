@@ -1,4 +1,4 @@
-name: 🛠️ Setup (Final Robust Ver)
+name: 🛠️ Setup (Final Fix with Escape)
 
 on: workflow_dispatch
 
@@ -20,7 +20,7 @@ jobs:
             const repoName = context.repo.repo;
             console.log(`🔧 Configuring for repository: ${repoName}`);
 
-            // --- 1. 修正 index.html ---
+            // 1. 修正 index.html
             if (fs.existsSync('index.html')) {
               let html = fs.readFileSync('index.html', 'utf8');
               html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
@@ -31,8 +31,7 @@ jobs:
               console.log('✅ index.html updated.');
             }
 
-            // --- 2. 重写 vite.config.ts (修复 ESM __dirname 问题) ---
-            // 我们显式添加 import.meta.url 处理，确保 build 不会报错
+            // 2. 重写 vite.config.ts (ESM 兼容版)
             const viteConfigLines = [
               "import { defineConfig } from 'vite';",
               "import react from '@vitejs/plugin-react';",
@@ -56,9 +55,12 @@ jobs:
               "});"
             ];
             fs.writeFileSync('vite.config.ts', viteConfigLines.join('\n'));
-            console.log('✅ vite.config.ts updated (ESM compatible).');
+            console.log('✅ vite.config.ts updated.');
 
-            // --- 3. 生成 Deploy.yml 内容 (使用数组拼接，杜绝缩进错误) ---
+            // 3. 生成 Deploy.yml (关键修正：防止变量被提前解析)
+            // 我们把 '$' 和 '{{' 分开，这样 Setup 流程就不会把它当成变量吃掉了
+            const pageUrlExpression = '$' + '{{ steps.deployment.outputs.page_url }}';
+
             const deployLines = [
               "name: Deploy to GitHub Pages",
               "",
@@ -91,7 +93,7 @@ jobs:
               "    runs-on: ubuntu-latest",
               "    environment:",
               "      name: github-pages",
-              "      url: ${{ steps.deployment.outputs.page_url }}",
+              `      url: ${pageUrlExpression}`,  // 这里使用了拼接后的变量
               "    steps:",
               "      - id: deployment",
               "        uses: actions/deploy-pages@v4"
